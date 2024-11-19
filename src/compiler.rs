@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use log::trace;
+use log::{debug, trace};
 use crate::tokenizer::{Token, TokenType};
 use crate::tokenizer::TokenType::In;
 use crate::variant::Variant;
@@ -81,6 +81,9 @@ impl Compiler {
     }
 
     pub fn compile(&mut self) -> Program {
+
+        debug!("Compiling program");
+
         self.functions.push(Function {
             name: "main".to_string(),
             locals: Vec::new(),
@@ -366,4 +369,5 @@ impl Compiler {
 
         self.token_index += 1;
     }
+
 }

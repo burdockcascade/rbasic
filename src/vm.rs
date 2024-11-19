@@ -95,6 +95,8 @@ impl Vm {
 
     pub fn run(mut self) {
 
+        debug!("Running program");
+
         if self.program.instructions.is_empty() {
             panic!("No instructions to run");
         }
