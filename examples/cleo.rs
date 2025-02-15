@@ -8,7 +8,7 @@ use rbasic::run_file;
 fn main() {
     
     // enable trace logging
-    TermLogger::init(LevelFilter::Info, Config::default(), TerminalMode::Mixed, ColorChoice::Auto).expect("TODO: panic message");
+    TermLogger::init(LevelFilter::Debug, Config::default(), TerminalMode::Mixed, ColorChoice::Auto).expect("TODO: panic message");
     
     // Collect command-line arguments
     let args: Vec<String> = env::args().collect();
@@ -29,7 +29,7 @@ fn main() {
     match file_result {
         Ok(_) => {
             info!("Successfully opened file: {}", filename);
-            run_file(filename);
+            run_file(filename).expect("valid file");
         }
         Err(error) => match error.kind() {
             ErrorKind::NotFound => {

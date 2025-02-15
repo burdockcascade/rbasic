@@ -1,0 +1,5 @@
+function add(a, b)
+    return a + b
+end
+
+var r = add(1, 2)

@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-log = "0.4.22"
+log = "0.4"
 
 [dev-dependencies]
-simplelog = "0.12.2"
+simplelog = "0.12"

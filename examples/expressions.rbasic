@@ -5,8 +5,6 @@ var d = c * 2
 var e = d / 2
 var f = e - 1
 
-
-
 var x = ((5 + 3 * 2) / 4 > 1 and not (7 - 2 <= 3) or 2 == 2) and (not (3 > 5) and (10 - 2 * 3) / 2 == 2 or 6 != 3 + 3)
 var x2 = not x
 var x3 = x and not x2

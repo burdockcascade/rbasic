@@ -93,7 +93,7 @@ impl Vm {
         }
     }
 
-    pub fn run(mut self) {
+    pub fn run(mut self) -> Result<Option<Variant>, String> {
 
         debug!("Running program");
 
@@ -243,6 +243,12 @@ impl Vm {
             trace!("Operands stack: {:?}", frame.operands);
             trace!("Locals stack: {:?}", frame.locals);
 
+        }
+
+        if frame.operands.is_empty() {
+            Ok(None)
+        } else {
+            Ok(Some(frame.pop_operand()))
         }
 
     }

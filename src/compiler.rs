@@ -101,20 +101,22 @@ impl Compiler {
             }
         }
 
+        let mut p = Program {
+            labels: HashMap::new(),
+            instructions: vec![Instruction::Halt],
+        };
 
-        let mut instructions = Vec::new();
+
         // compile instructions from each function
         for function in &self.functions {
-            instructions.extend(function.instructions.clone());
+            p.labels.insert(function.name.clone(), p.instructions.len());
+            p.instructions.extend(function.instructions.clone());
         }
 
         // insert Halt
-        instructions.push(Instruction::Halt);
+        p.instructions.push(Instruction::Halt);
 
-        Program {
-            labels: HashMap::new(),
-            instructions,
-        }
+        return p
     }
 
     fn parse_variable_declaration(&mut self, function_index: usize) {
