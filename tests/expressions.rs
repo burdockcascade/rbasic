@@ -4,7 +4,7 @@ use rbasic::evaluate;
 #[test]
 fn test_simple_expression() {
 
-    let script = "return 1 + 2 * 3 ";
+    let script = "return 1 + 2 * 3";
     let result = evaluate(script, None);
 
     let expected = 7;
@@ -16,7 +16,7 @@ fn test_simple_expression() {
 #[test]
 fn test_simple_expression_with_parentheses() {
 
-    let script = "return (1 + 2) * 3 ";
+    let script = "return (1 + 2) * 3";
     let result = evaluate(script, None);
 
     let expected = 9;
@@ -42,19 +42,17 @@ fn test_simple_expression_with_parentheses_and_variables() {
 }
 
 #[test]
-fn test_simple_expression_with_parentheses_and_variables_and_function() {
+fn test_simple_expression_with_function_and_expression_as_argument() {
 
     let script = r#"
-        var a = 1
-        var b = 2
-        function add(a, b) 
+        function add(a, b)
             return a + b
         end
-        return add(a, b) * 3
+        return add(1, 2 * 3)
     "#;
     let result = evaluate(script, None);
 
-    let expected = 9;
+    let expected = 7;
     let value: i64 = result.unwrap().into();
     assert_eq!(value, expected);
 

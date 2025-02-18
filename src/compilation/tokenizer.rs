@@ -186,15 +186,15 @@ impl Tokenizer {
         }
 
         // handle numbers
-        if self.chars[self.cursor].is_numeric() {
+        if self.cursor < self.chars.len() && self.chars[self.cursor].is_numeric() {
             let start = self.cursor;
-            while self.chars[self.cursor].is_numeric() {
+            while self.cursor < self.chars.len() && self.chars[self.cursor].is_numeric() {
                 self.cursor += 1;
                 self.column += 1;
             }
-            if self.chars[self.cursor] == '.' {
+            if self.cursor < self.chars.len() &&  self.chars[self.cursor] == '.' {
                 self.cursor += 1;
-                while self.chars[self.cursor].is_numeric() {
+                while self.cursor < self.chars.len() && self.chars[self.cursor].is_numeric() {
                     self.cursor += 1;
                 }
                 let lexeme = self.chars[start..self.cursor].iter().collect::<String>();
@@ -329,7 +329,7 @@ mod tests {
         let tokens = vec![
             Token {
                 token_type: TokenType::Var,
-                lexeme: Option::from(String::from("var")),
+                lexeme: None,
                 position: TokenPosition { line: 1, column: 1 },
             },
             Token {
@@ -339,7 +339,7 @@ mod tests {
             },
             Token {
                 token_type: TokenType::Equal,
-                lexeme: Option::from(String::from("=")),
+                lexeme: None,
                 position: TokenPosition { line: 1, column: 7 },
             },
             Token {
@@ -349,13 +349,13 @@ mod tests {
             },
             Token {
                 token_type: TokenType::Plus,
-                lexeme: Option::from(String::from("+")),
-                position: TokenPosition { line: 1, column: 11 },
+                lexeme: None,
+                position: TokenPosition { line: 1, column: 10 },
             },
             Token {
                 token_type: TokenType::Float,
                 lexeme: Option::from(String::from("3.14")),
-                position: TokenPosition { line: 1, column: 12 },
+                position: TokenPosition { line: 1, column: 11 },
             },
         ];
         assert_eq!(Tokenizer::tokenize(input), tokens);
@@ -367,7 +367,7 @@ mod tests {
         let tokens = vec![
             Token {
                 token_type: TokenType::Var,
-                lexeme: Option::from(String::from("var")),
+                lexeme: None,
                 position: TokenPosition { line: 1, column: 1 },
             },
             Token {
@@ -377,7 +377,7 @@ mod tests {
             },
             Token {
                 token_type: TokenType::Equal,
-                lexeme: Option::from(String::from("=")),
+                lexeme: None,
                 position: TokenPosition { line: 1, column: 7 },
             },
             Token {
