@@ -58,6 +58,9 @@ impl Into<bool> for Variant {
     fn into(self) -> bool {
         match self {
             Variant::Boolean(b) => b,
+            Variant::Integer(i) => i != 0,
+            Variant::Float(f) => f != 0.0,
+            Variant::String(s) => !s.is_empty(),
             _ => panic!("Cannot convert to bool")
         }
     }
@@ -86,6 +89,7 @@ impl Add for Variant {
             (Variant::Integer(lhs), Variant::Integer(rhs)) => Variant::Integer(lhs + rhs),
             (Variant::Float(lhs), Variant::Float(rhs)) => Variant::Float(lhs + rhs),
             (Variant::String(lhs), Variant::String(rhs)) => Variant::String(lhs + &rhs),
+            (Variant::Boolean(lhs), Variant::Boolean(rhs)) => Variant::Boolean(lhs || rhs),
             _ => panic!("Invalid operands for addition")
         }
     }
