@@ -1,4 +1,7 @@
+use std::cell::RefCell;
+use std::collections::HashMap;
 use std::ops::{Add, Div, Mul, Not, Sub};
+use std::rc::Rc;
 
 #[derive(Debug, Clone)]
 pub enum Variant {
@@ -7,7 +10,9 @@ pub enum Variant {
     Float(f64),
     String(String),
     Boolean(bool),
-    Identifier(String)
+    Identifier(String),
+    ArrayRef(Rc<RefCell<Vec<Variant>>>),
+    TableRef(Rc<RefCell<HashMap<String, Variant>>>),
 }
 
 impl Variant {
@@ -21,6 +26,34 @@ impl Variant {
         }
     }
 }
+
+impl Into<i64> for Variant {
+    fn into(self) -> i64 {
+        match self {
+            Variant::Integer(i) => i,
+            v => panic!("Cannot convert from {:?} to i64", v)
+        }
+    }
+}
+
+impl Into<f64> for Variant {
+    fn into(self) -> f64 {
+        match self {
+            Variant::Float(f) => f,
+            v => panic!("Cannot convert from {:?} to f64", v)
+        }
+    }
+}
+
+impl Into<String> for Variant {
+    fn into(self) -> String {
+        match self {
+            Variant::String(s) => s,
+            _ => panic!("Cannot convert to String")
+        }
+    }
+}
+
 
 impl PartialEq for Variant {
     fn eq(&self, other: &Self) -> bool {

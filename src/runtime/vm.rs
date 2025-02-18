@@ -1,12 +1,19 @@
 use std::collections::HashMap;
 use log::{debug, trace};
-use crate::variant::Variant;
+use crate::runtime::variant::Variant;
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
+
     Push(Variant),
+
+    // Variables
     SetLocal(usize),
     LoadLocal(usize),
+
+    FunctionCall(String, usize),
+
+    // Stack operations
     Pop,
     Add,
     Sub,
@@ -29,8 +36,8 @@ pub enum Instruction {
 
 #[derive(Debug, Clone)]
 pub struct Program {
-    pub(crate) labels: HashMap<String, usize>,
-    pub(crate) instructions: Vec<Instruction>,
+    pub labels: HashMap<String, usize>,
+    pub instructions: Vec<Instruction>,
 }
 
 #[derive(Debug, Clone)]
@@ -45,28 +52,28 @@ impl StackFrame {
     pub fn new(id: u32) -> StackFrame {
         StackFrame {
             id,
-            locals: Vec::new(),
-            operands: Vec::new(),
+            locals: Vec::with_capacity(16),
+            operands: Vec::with_capacity(16),
             return_address: None,
         }
     }
 
-    #[inline]
     pub fn pop_operand(&mut self) -> Variant {
         self.operands.pop().unwrap()
     }
 
-    #[inline]
     pub fn push_operand(&mut self, operand: Variant) {
         self.operands.push(operand);
     }
 
-    #[inline]
     pub fn get_local(&self, index: usize) -> Variant {
-        self.locals[index].clone()
+        if index >= self.locals.len() {
+            panic!("Local variable not found: {}", index);
+        } else {
+            self.locals[index].clone()
+        }
     }
 
-    #[inline]
     pub fn set_local(&mut self, index: usize, value: Variant) {
         if index >= self.locals.len() {
             self.locals.resize(index + 1, value);
@@ -88,12 +95,16 @@ impl Vm {
     pub fn new(program: Program) -> Vm {
         Vm {
             program,
-            stack: Vec::new(),
+            stack: Vec::with_capacity(16),
             pc: 0,
         }
     }
 
-    pub fn run(mut self) -> Result<Option<Variant>, String> {
+    pub fn run(mut self, entry_point: Option<String>) -> Result<Option<Variant>, String> {
+
+        trace!("Program: {:?}", self.program);
+        trace!("Entry point: {:?}", entry_point);
+        trace!("Labels: {:?}", self.program.labels);
 
         debug!("Running program");
 
@@ -101,23 +112,29 @@ impl Vm {
             panic!("No instructions to run");
         }
 
-        let mut frame = StackFrame {
-            id: 0,
-            locals: Vec::with_capacity(16),
-            operands: Vec::with_capacity(16),
-            return_address: None,
-        };
+        match entry_point {
+            Some(label) => {
+                match self.program.labels.get(&label) {
+                    Some(pc) => self.pc = *pc,
+                    None => self.pc = 0
+                }
+            },
+            None => self.pc = 0
+        }
+
+        let mut frame = StackFrame::new(0);
 
         loop {
+
+            trace!(">>> Loop iteration");
 
             let Some(instruction) = &self.program.instructions.get(self.pc) else {
                 panic!("Invalid program counter");
             };
-
-            trace!("");
-            trace!("Frame: {:?}", frame.id);
-            trace!("PC: {}", self.pc);
-            trace!("{:?}", instruction);
+            
+            trace!("Program counter -> {}", self.pc);
+            trace!("Frame -> {:?}", frame);
+            trace!("Instruction -> {:?}", instruction);
 
             match instruction {
 
@@ -141,6 +158,62 @@ impl Vm {
                     let value = frame.get_local(*index);
                     frame.push_operand(value);
                     self.pc += 1;
+                },
+
+                Instruction::FunctionCall(ref label, num_args) => {
+
+                    let pc = match self.program.labels.get(label) {
+                        Some(pc) => pc,
+                        None => panic!("Label not found: {}", label)
+                    };
+
+                    // Create a new frame
+                    let mut new_frame = StackFrame::new(frame.id + 1);
+                    new_frame.return_address = Some(self.pc + 1);
+
+                    // copy values from stack into new frame arguments
+                    for _ in 0..*num_args {
+                        let value = frame.pop_operand();
+                        new_frame.push_operand(value);
+                    }
+
+                    // Push the current frame onto the stack
+                    self.stack.push(frame);
+
+                    // Set the new frame as the current frame
+                    frame = new_frame;
+                    self.pc = *pc;
+                },
+
+                Instruction::Return => {
+                    match frame.return_address {
+                        Some(address) => {
+
+                            if frame.operands.len() > 1 {
+                                panic!("Too many return values");
+                            }
+
+                            let return_value = if frame.operands.is_empty() {
+                                Variant::Null
+                            } else {
+                                frame.pop_operand()
+                            };
+
+                            self.pc = address;
+                            frame = self.stack.pop().unwrap();
+
+                            frame.push_operand(return_value);
+                        },
+                        None => {
+                            let return_value = if frame.operands.is_empty() {
+                                Variant::Null
+                            } else {
+                                frame.pop_operand()
+                            };
+                            
+                            return Ok(Some(return_value));
+                        }
+                    }
                 },
 
                 Instruction::Equals => {
@@ -240,10 +313,11 @@ impl Vm {
                 _ => unimplemented!("Instruction not implemented: {:?}", instruction),
             }
 
-            trace!("Operands stack: {:?}", frame.operands);
-            trace!("Locals stack: {:?}", frame.locals);
+            trace!("Frame <- {:?}", frame);
 
         }
+
+        debug!("Program halted");
 
         if frame.operands.is_empty() {
             Ok(None)
@@ -273,7 +347,7 @@ mod tests {
         };
 
         let vm = Vm::new(program);
-        vm.run();
+        vm.run(None);
 
     }
 }

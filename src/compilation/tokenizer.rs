@@ -1,4 +1,3 @@
-use log::trace;
 
 macro_rules! return_token {
     ($token_type:expr, $position:expr) => {
