@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Rem;
 use log::{debug, trace};
 use crate::runtime::variant::Variant;
 
@@ -303,6 +304,13 @@ impl Vm {
                     let a = frame.pop_operand();
                     let b = frame.pop_operand();
                     frame.push_operand(Variant::Boolean(b.as_bool() && a.as_bool()));
+                    self.pc += 1;
+                },
+                
+                Instruction::Mod => {
+                    let a = frame.pop_operand();
+                    let b = frame.pop_operand();
+                    frame.push_operand(b % a);
                     self.pc += 1;
                 },
 

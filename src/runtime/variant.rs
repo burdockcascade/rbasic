@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::{Add, Div, Mul, Not, Sub};
+use std::ops::{Add, Div, Mul, Not, Rem, Sub};
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -50,6 +50,15 @@ impl Into<String> for Variant {
         match self {
             Variant::String(s) => s,
             _ => panic!("Cannot convert to String")
+        }
+    }
+}
+
+impl Into<bool> for Variant {
+    fn into(self) -> bool {
+        match self {
+            Variant::Boolean(b) => b,
+            _ => panic!("Cannot convert to bool")
         }
     }
 }
@@ -114,6 +123,17 @@ impl Mul for Variant {
             (Variant::Integer(lhs), Variant::Integer(rhs)) => Variant::Integer(lhs * rhs),
             (Variant::Float(lhs), Variant::Float(rhs)) => Variant::Float(lhs * rhs),
             _ => panic!("Invalid operands for multiplication")
+        }
+    }
+}
+
+impl Rem for Variant {
+    type Output = Variant;
+
+    fn rem(self, rhs: Self) -> Self::Output {
+        match (self, rhs) {
+            (Variant::Integer(lhs), Variant::Integer(rhs)) => Variant::Integer(lhs % rhs),
+            _ => panic!("Invalid operands for modulus")
         }
     }
 }
