@@ -1,6 +1,6 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::{Add, Div, Mul, Not, Rem, Sub};
+use std::ops::{Add, Div, Mul, Neg, Not, Rem, Sub};
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -23,6 +23,14 @@ impl Variant {
             Variant::Float(f) => *f != 0.0,
             Variant::String(s) => !s.is_empty(),
             _ => false
+        }
+    }
+    
+    pub fn pow(&self, rhs: &Variant) -> Variant {
+        match (self, rhs) {
+            (Variant::Integer(lhs), Variant::Integer(rhs)) => Variant::Integer(lhs.pow(*rhs as u32)),
+            (Variant::Float(lhs), Variant::Float(rhs)) => Variant::Float(lhs.powf(*rhs)),
+            _ => panic!("Invalid operands for exponentiation")
         }
     }
 }
@@ -137,7 +145,21 @@ impl Rem for Variant {
     fn rem(self, rhs: Self) -> Self::Output {
         match (self, rhs) {
             (Variant::Integer(lhs), Variant::Integer(rhs)) => Variant::Integer(lhs % rhs),
+            (Variant::Float(lhs), Variant::Float(rhs)) => Variant::Float(lhs % rhs),
             _ => panic!("Invalid operands for modulus")
+        }
+    }
+}
+
+impl Neg for Variant {
+    type Output = Variant;
+
+    fn neg(self) -> Self::Output {
+        match self {
+            Variant::Integer(i) => Variant::Integer(-i),
+            Variant::Float(f) => Variant::Float(-f),
+            Variant::Boolean(b) => Variant::Boolean(!b),
+            _ => panic!("Invalid operand for negation")
         }
     }
 }

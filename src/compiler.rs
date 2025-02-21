@@ -1,8 +1,9 @@
 use std::collections::HashMap;
 use log::{debug, trace};
-use crate::compilation::tokenizer::{Token, TokenType};
-use crate::runtime::variant::Variant;
-use crate::runtime::vm::{Instruction, Program};
+use crate::variant::Variant;
+use crate::vm::{Instruction, Program};
+use crate::ScriptError;
+use crate::tokenizer::{Token, TokenType};
 
 macro_rules! expect_token {
     ($tokens:expr, $index:expr, $expected:pat) => {
@@ -109,8 +110,7 @@ impl Compiler {
         }
     }
 
-    pub fn compile(&mut self) -> Program {
-
+    pub fn compile(&mut self) -> Result<Program, ScriptError> {
         debug!("Compiling program");
 
         // top level function
@@ -122,13 +122,25 @@ impl Compiler {
 
         while self.token_index < self.tokens.len() {
             let Some(token) = self.tokens.get(self.token_index) else {
-                panic!("Unexpected end of file");
+                return Err(ScriptError::CompileError {
+                    message: "Unexpected end of file".to_string(),
+                });
             };
 
             match token.token_type {
                 TokenType::Var => self.parse_variable_declaration(0),
                 TokenType::Return => self.parse_return_statement(0),
                 TokenType::Function => self.parse_function(),
+                TokenType::If => self.parse_if_statement(0),
+                TokenType::Identifier => {
+                    let identifier = token.lexeme.as_ref().unwrap().to_string();
+                    if peek_token!(self.tokens, self.token_index + 1, TokenType::LeftParen) {
+                        self.token_index += 1;
+                        self.parse_function_call(0, identifier, false);
+                    } else {
+                        panic!("Unexpected token {:?}", token);
+                    }
+                }
                 TokenType::Semicolon => self.token_index += 1,
                 _ => unimplemented!("{:?}", token),
             }
@@ -138,7 +150,7 @@ impl Compiler {
             labels: HashMap::new(),
             instructions: Vec::new()
         };
-        
+
         // add top level function first
         p.instructions.extend(self.functions[0].instructions.clone());
 
@@ -151,11 +163,10 @@ impl Compiler {
             p.instructions.extend(self.functions[i].instructions.clone());
         }
 
-        p
+        Ok(p)
     }
 
     fn parse_block(&mut self, function_index: usize) {
-
         skip_token!(self.tokens, self.token_index, TokenType::Do);
 
         while self.token_index < self.tokens.len() {
@@ -174,8 +185,22 @@ impl Compiler {
                 _ => unimplemented!("{:?}", token),
             }
         }
+    }
 
+    fn parse_if_statement(&mut self, function_index: usize) {
+        consume_token!(self.tokens, self.token_index, TokenType::If);
 
+        self.parse_expression(function_index);
+
+        consume_token!(self.tokens, self.token_index, TokenType::Then);
+
+        let then_index = self.functions[function_index].instructions.len();
+        self.functions[function_index].instructions.push(Instruction::JumpIfFalse(0));
+
+        self.parse_block(function_index);
+
+        let end_index = self.functions[function_index].instructions.len();
+        self.functions[function_index].instructions[then_index] = Instruction::JumpIfFalse(end_index);
     }
 
     fn parse_return_statement(&mut self, function_index: usize) {
@@ -224,7 +249,7 @@ impl Compiler {
             locals: Vec::new(),
             instructions: Vec::new(),
         });
-        
+
         // move values off stack and into locals
         for parameter in parameters {
             let var_index = self.functions.last_mut().unwrap().find_or_insert_local(&parameter);
@@ -233,7 +258,6 @@ impl Compiler {
 
         let function_index = self.functions.len() - 1;
         self.parse_block(function_index);
-
     }
 
     fn parse_variable_declaration(&mut self, function_index: usize) {
@@ -251,6 +275,47 @@ impl Compiler {
         self.functions[function_index].instructions.push(Instruction::SetLocal(var_index));
     }
 
+    fn parse_function_call(&mut self, function_index: usize, identifier: String, is_assignment: bool) {
+        consume_token!(self.tokens, self.token_index, TokenType::LeftParen);
+
+        let mut arg_count = 0;
+
+        loop {
+            let token = match self.tokens.get(self.token_index) {
+                Some(token) => token,
+                None => break,
+            };
+
+            match token.token_type {
+                TokenType::RightParen => {
+                    self.token_index += 1;
+                    break;
+                }
+                TokenType::Comma => {
+                    self.token_index += 1;
+                }
+                _ => {
+                    self.parse_expression(function_index);
+                    arg_count += 1;
+                }
+            }
+        }
+
+        // add function call instruction
+        trace!("Function call: '{}' with {} arguments", identifier, arg_count);
+        self.functions[function_index].instructions.push(Instruction::FunctionCall(identifier.to_string(), arg_count));
+
+        // if not an assignment, pop the result
+        if !is_assignment {
+            self.functions[function_index].instructions.push(Instruction::Pop);
+        }
+    }
+    
+}
+
+// Expression parsing
+impl Compiler {
+    
     fn parse_expression(&mut self, function_index: usize) {
         self.parse_logical_or_expression(function_index);
     }
@@ -276,7 +341,7 @@ impl Compiler {
     }
 
     fn parse_logical_and_expression(&mut self, function_index: usize) {
-        self.parse_equality_expression(function_index);
+        self.parse_relational_expression(function_index);
 
         loop {
             let token = match self.tokens.get(self.token_index) {
@@ -287,33 +352,8 @@ impl Compiler {
             match token.token_type {
                 TokenType::And => {
                     self.token_index += 1;
-                    self.parse_equality_expression(function_index);
+                    self.parse_relational_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::And);
-                }
-                _ => break,
-            }
-        }
-    }
-
-    fn parse_equality_expression(&mut self, function_index: usize) {
-        self.parse_relational_expression(function_index);
-
-        loop {
-            let token = match self.tokens.get(self.token_index) {
-                Some(token) => token,
-                None => break,
-            };
-
-            match token.token_type {
-                TokenType::DoubleEqual => {
-                    self.token_index += 1;
-                    self.parse_relational_expression(function_index);
-                    self.functions[function_index].instructions.push(Instruction::Equals);
-                }
-                TokenType::NotEqual => {
-                    self.token_index += 1;
-                    self.parse_relational_expression(function_index);
-                    self.functions[function_index].instructions.push(Instruction::NotEqual);
                 }
                 _ => break,
             }
@@ -414,6 +454,11 @@ impl Compiler {
                     self.token_index += 1;
                     self.parse_unary_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::Mod);
+                },
+                TokenType::Caret => {
+                    self.token_index += 1;
+                    self.parse_unary_expression(function_index);
+                    self.functions[function_index].instructions.push(Instruction::Pow);
                 }
                 _ => break,
             }
@@ -423,16 +468,16 @@ impl Compiler {
     fn parse_unary_expression(&mut self, function_index: usize) {
         let token = match self.tokens.get(self.token_index) {
             Some(token) => token,
-            None => panic!("Expected more tokens"),
+            None => panic!("Expected more tokens"), // todo: replace with runtime error
         };
 
         match token.token_type {
-            TokenType::Minus => {
+            TokenType::Minus => { // fixme: this may be broken
                 self.token_index += 1;
                 self.parse_primary_expression(function_index);
                 self.functions[function_index].instructions.push(Instruction::Negate);
             }
-            TokenType::Not => {
+            TokenType::Not | TokenType::Bang => {
                 self.token_index += 1;
                 self.parse_primary_expression(function_index);
                 self.functions[function_index].instructions.push(Instruction::Not);
@@ -444,7 +489,7 @@ impl Compiler {
     fn parse_primary_expression(&mut self, function_index: usize) {
         let token = match self.tokens.get(self.token_index) {
             Some(token) => token,
-            None => panic!("Expected more tokens"),
+            None => panic!("Expected more tokens"), // todo: replace with runtime error
         };
 
         match token.token_type {
@@ -472,7 +517,7 @@ impl Compiler {
                 // if function call
                 if peek_token!(self.tokens, self.token_index + 1, TokenType::LeftParen) {
                     self.token_index += 1;
-                    self.parse_function_call(function_index, identifier.clone());
+                    self.parse_function_call(function_index, identifier.clone(), true);
                 } else {
                     let var_index = self.functions[function_index].find_or_insert_local(identifier);
                     self.functions[function_index].instructions.push(Instruction::LoadLocal(var_index));
@@ -490,40 +535,10 @@ impl Compiler {
                 self.parse_primary_expression(function_index);
                 self.functions[function_index].instructions.push(Instruction::Not);
             }
-            _ => unimplemented!("{:?}", token),
+            _ => unimplemented!("{:?}", token), // todo: replace with unexpected token error
         }
 
         self.token_index += 1;
-    }
-    fn parse_function_call(&mut self, function_index: usize, identifier: String) {
-        consume_token!(self.tokens, self.token_index, TokenType::LeftParen);
-
-        let mut arg_count = 0;
-
-        loop {
-            let token = match self.tokens.get(self.token_index) {
-                Some(token) => token,
-                None => break,
-            };
-
-            match token.token_type {
-                TokenType::RightParen => {
-                    self.token_index += 1;
-                    break;
-                }
-                TokenType::Comma => {
-                    self.token_index += 1;
-                }
-                _ => {
-                    self.parse_expression(function_index);
-                    arg_count += 1;
-                }
-            }
-        }
-        
-        trace!("Function call: '{}' with {} arguments", identifier, arg_count);
-
-        self.functions[function_index].instructions.push(Instruction::FunctionCall(identifier.to_string(), arg_count));
     }
 
 }

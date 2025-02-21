@@ -1,7 +1,7 @@
 use std::collections::HashMap;
-use std::ops::Rem;
 use log::{debug, trace};
-use crate::runtime::variant::Variant;
+use crate::variant::Variant;
+use crate::ScriptError;
 
 #[derive(Debug, Clone)]
 pub enum Instruction {
@@ -21,6 +21,7 @@ pub enum Instruction {
     Mul,
     Div,
     Mod,
+    Pow,
     Equals,
     Not,
     Return,
@@ -33,7 +34,10 @@ pub enum Instruction {
     NotEqual,
     Or,
     And,
+
+    JumpIfFalse(usize),
 }
+
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -101,7 +105,7 @@ impl Vm {
         }
     }
 
-    pub fn run(mut self, entry_point: Option<String>) -> Result<Option<Variant>, String> {
+    pub fn run(mut self, entry_point: Option<String>) -> Result<Option<Variant>, ScriptError> {
 
         trace!("Program: {:?}", self.program);
         trace!("Entry point: {:?}", entry_point);
@@ -165,7 +169,9 @@ impl Vm {
 
                     let pc = match self.program.labels.get(label) {
                         Some(pc) => pc,
-                        None => panic!("Label not found: {}", label)
+                        None => return Err(ScriptError::RuntimeError {
+                            message: format!("Label not found: {}", label)
+                        })
                     };
 
                     // Create a new frame
@@ -191,7 +197,9 @@ impl Vm {
                         Some(address) => {
 
                             if frame.operands.len() > 1 {
-                                panic!("Too many return values");
+                                return Err(ScriptError::RuntimeError {
+                                    message: "Too many items on the stack".to_string()
+                                });
                             }
 
                             let return_value = if frame.operands.is_empty() {
@@ -311,6 +319,19 @@ impl Vm {
                     let a = frame.pop_operand();
                     let b = frame.pop_operand();
                     frame.push_operand(b % a);
+                    self.pc += 1;
+                },
+                
+                Instruction::Pow => {
+                    let a = frame.pop_operand();
+                    let b = frame.pop_operand();
+                    frame.push_operand(b.pow(&a));
+                    self.pc += 1;
+                },
+                
+                Instruction::Negate => {
+                    let a = frame.pop_operand();
+                    frame.push_operand(-a);
                     self.pc += 1;
                 },
 

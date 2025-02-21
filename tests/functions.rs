@@ -11,7 +11,7 @@ fn test_simple_function() {
     let result = evaluate(script, None);
 
     let expected = 3;
-    let value: i64 = result.unwrap().into();
+    let value: i64 = result.unwrap().unwrap().into();
     assert_eq!(value, expected);
 }
 
@@ -28,7 +28,7 @@ fn test_simple_function_with_variable() {
     let result = evaluate(script, None);
 
     let expected = 3;
-    let value: i64 = result.unwrap().into();
+    let value: i64 = result.unwrap().unwrap().into();
     assert_eq!(value, expected);
 }
 
@@ -43,7 +43,7 @@ fn test_simple_function_with_expression_as_argument() {
     let result = evaluate(script, None);
 
     let expected = 7;
-    let value: i64 = result.unwrap().into();
+    let value: i64 = result.unwrap().unwrap().into();
     assert_eq!(value, expected);
 }
 
@@ -60,7 +60,7 @@ fn test_simple_function_with_expression_as_argument_and_variable() {
     let result = evaluate(script, None);
 
     let expected = 7;
-    let value: i64 = result.unwrap().into();
+    let value: i64 = result.unwrap().unwrap().into();
     assert_eq!(value, expected);
 }
 
@@ -78,6 +78,18 @@ fn test_simple_function_with_expression_as_argument_and_variable_and_return() {
     let result = evaluate(script, None);
 
     let expected = 7;
-    let value: i64 = result.unwrap().into();
+    let value: i64 = result.unwrap().unwrap().into();
     assert_eq!(value, expected);
+}
+
+#[test]
+fn test_single_function_call_with_no_return() {
+    let script = r#"
+        function add(a, b)
+            return a + b
+        end
+        add(1, 2)
+    "#;
+    let result = evaluate(script, None);
+    assert!(result.unwrap().is_none());
 }
