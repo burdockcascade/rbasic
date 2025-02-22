@@ -20,6 +20,7 @@ macro_rules! return_token {
 pub enum TokenType {
 
     // Keywords
+    Assert,
     Var,
     Const,
     If,
@@ -161,6 +162,7 @@ impl Tokenizer {
             }
             let lexeme = self.chars[start..self.cursor].iter().collect::<String>();
             match lexeme.as_str() {
+                "assert" => return_token!(TokenType::Assert, position),
                 "var" => return_token!(TokenType::Var, position),
                 "const" => return_token!(TokenType::Const, position),
                 "if" => return_token!(TokenType::If, position),
@@ -311,6 +313,22 @@ impl Tokenizer {
             ')' => {
                 self.cursor += 1;
                 return_token!(TokenType::RightParen, position)
+            },
+            '{' => {
+                self.cursor += 1;
+                return_token!(TokenType::LeftBrace, position)
+            },
+            '}' => {
+                self.cursor += 1;
+                return_token!(TokenType::RightBrace, position)
+            },
+            '[' => {
+                self.cursor += 1;
+                return_token!(TokenType::LeftBracket, position)
+            },
+            ']' => {
+                self.cursor += 1;
+                return_token!(TokenType::RightBracket, position)
             },
             _ => panic!("Unknown token: {}", self.chars[self.cursor]),
         }

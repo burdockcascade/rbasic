@@ -1,0 +1,10 @@
+function main()
+
+    var v = 1
+
+    var a = v
+    v = 2
+
+    assert a == 1
+
+end

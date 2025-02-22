@@ -11,20 +11,16 @@ pub enum Variant {
     String(String),
     Boolean(bool),
     Identifier(String),
-    ArrayRef(Rc<RefCell<Vec<Variant>>>),
-    TableRef(Rc<RefCell<HashMap<String, Variant>>>),
+    
+    Array(Rc<RefCell<Vec<Variant>>>),
+    ArrayIndex(usize),
+    
+    Table(Rc<RefCell<HashMap<String, Variant>>>),
+    TableIndex(String),
+    
 }
 
 impl Variant {
-    pub fn as_bool(&self) -> bool {
-        match self {
-            Variant::Boolean(b) => *b,
-            Variant::Integer(i) => *i != 0,
-            Variant::Float(f) => *f != 0.0,
-            Variant::String(s) => !s.is_empty(),
-            _ => false
-        }
-    }
     
     pub fn pow(&self, rhs: &Variant) -> Variant {
         match (self, rhs) {
@@ -40,6 +36,15 @@ impl Into<i64> for Variant {
         match self {
             Variant::Integer(i) => i,
             v => panic!("Cannot convert from {:?} to i64", v)
+        }
+    }
+}
+
+impl Into<usize> for Variant {
+    fn into(self) -> usize {
+        match self {
+            Variant::Integer(i) => i as usize,
+            v => panic!("Cannot convert from {:?} to usize", v)
         }
     }
 }
@@ -97,7 +102,7 @@ impl Add for Variant {
             (Variant::Integer(lhs), Variant::Integer(rhs)) => Variant::Integer(lhs + rhs),
             (Variant::Float(lhs), Variant::Float(rhs)) => Variant::Float(lhs + rhs),
             (Variant::String(lhs), Variant::String(rhs)) => Variant::String(lhs + &rhs),
-            (Variant::Boolean(lhs), Variant::Boolean(rhs)) => Variant::Boolean(lhs || rhs),
+            (Variant::Boolean(lhs), Variant::Boolean(rhs)) => Variant::Boolean(lhs && rhs),
             _ => panic!("Invalid operands for addition")
         }
     }

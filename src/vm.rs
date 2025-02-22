@@ -1,20 +1,28 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use log::{debug, trace};
 use crate::variant::Variant;
 use crate::ScriptError;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
 
-    Push(Variant),
+    Assert,
 
     // Variables
     SetLocal(usize),
     LoadLocal(usize),
+    
+    CreateArray(usize),
+    CreateTable(usize),
+    MemberAccess,
+    SetMember,
 
     FunctionCall(String, usize),
 
     // Stack operations
+    Push(Variant),
     Pop,
     Add,
     Sub,
@@ -35,9 +43,9 @@ pub enum Instruction {
     Or,
     And,
 
+    Jump(usize),
     JumpIfFalse(usize),
 }
-
 
 #[derive(Debug, Clone)]
 pub struct Program {
@@ -110,38 +118,54 @@ impl Vm {
         trace!("Program: {:?}", self.program);
         trace!("Entry point: {:?}", entry_point);
         trace!("Labels: {:?}", self.program.labels);
-
-        debug!("Running program");
-
+        
         if self.program.instructions.is_empty() {
             panic!("No instructions to run");
         }
-
-        match entry_point {
+        
+        
+        self.pc = match entry_point {
             Some(label) => {
                 match self.program.labels.get(&label) {
-                    Some(pc) => self.pc = *pc,
-                    None => self.pc = 0
+                    Some(pc) => *pc,
+                    None => 0
                 }
             },
-            None => self.pc = 0
-        }
+            None => match self.program.labels.get("main") {
+                Some(pc) => *pc,
+                None => panic!("No entry point found")
+            }
+        };
 
         let mut frame = StackFrame::new(0);
+        
+        trace!("Starting at program counter: {}", self.pc);
 
         loop {
 
-            trace!(">>> Loop iteration");
+            trace!("=== Loop iteration ===");
 
             let Some(instruction) = &self.program.instructions.get(self.pc) else {
                 panic!("Invalid program counter");
             };
             
-            trace!("Program counter -> {}", self.pc);
-            trace!("Frame -> {:?}", frame);
-            trace!("Instruction -> {:?}", instruction);
+            trace!("Program counter: {}", self.pc);
+            trace!("Instruction: {:?}", instruction);
+            trace!("Frame ID: {}", frame.id);
+            trace!("Frame locals -> {:?}", frame.locals);
+            trace!("Frame operands -> {:?}", frame.operands);
 
             match instruction {
+
+                Instruction::Assert => {
+                    let value: bool = frame.pop_operand().into();
+                    if !value {
+                        return Err(ScriptError::RuntimeError {
+                            message: "Assertion failed".to_string()
+                        });
+                    }
+                    self.pc += 1;
+                },
 
                 Instruction::Push(ref variant) => {
                     frame.push_operand(variant.clone());
@@ -152,6 +176,8 @@ impl Vm {
                     frame.pop_operand();
                     self.pc += 1;
                 },
+
+                // Local variables
 
                 Instruction::SetLocal(index) => {
                     let value = frame.pop_operand();
@@ -164,6 +190,84 @@ impl Vm {
                     frame.push_operand(value);
                     self.pc += 1;
                 },
+
+                Instruction::CreateArray(size) => {
+                    let mut array = Vec::with_capacity(*size);
+                    for _ in 0..*size {
+                        array.push(frame.pop_operand());
+                    }
+                    array.reverse();
+                    frame.push_operand(Variant::Array(Rc::new(RefCell::new(array))));
+                    self.pc += 1;
+                },
+
+                Instruction::MemberAccess => {
+                    let index = frame.pop_operand();
+                    let array = frame.pop_operand();
+                    let value = match array {
+                        Variant::Array(array) => {
+                            let array = array.borrow();
+                            let index: usize = index.into();
+                            match array.get(index) {
+                                Some(value) => value.clone(),
+                                None => return Err(ScriptError::RuntimeError {
+                                    message: "Index out of bounds".to_string()
+                                })
+                            }
+                        },
+                        Variant::Table(table) => {
+                            let table = table.borrow();
+                            let index: String = index.into();
+                            match table.get(&index) {
+                                Some(value) => value.clone(),
+                                None => return Err(ScriptError::RuntimeError {
+                                    message: "Key not found".to_string()
+                                })
+                            }
+                        },
+                        _ => return Err(ScriptError::RuntimeError {
+                            message: "Not an array nor table".to_string()
+                        })
+                    };
+                    frame.push_operand(value);
+                    self.pc += 1;
+                },
+
+                Instruction::SetMember => {
+                    let value = frame.pop_operand();
+                    let index = frame.pop_operand();
+                    let array = frame.pop_operand();
+                    match array {
+                        Variant::Array(array) => {
+                            let mut array = array.borrow_mut();
+                            let index: usize = index.into();
+                            array[index] = value;
+                        },
+                        Variant::Table(table) => {
+                            let mut table = table.borrow_mut();
+                            let index: String = index.into();
+                            table.insert(index, value);
+                        },
+                        _ => return Err(ScriptError::RuntimeError {
+                            message: "Not an array nor table".to_string()
+                        })
+                    }
+                    self.pc += 1;
+                },
+
+                Instruction::CreateTable(size) => {
+                    let mut table = HashMap::new();
+                    for _ in 0..*size {
+                        let value = frame.pop_operand();
+                        let key = frame.pop_operand();
+                        let key: String = key.into();
+                        table.insert(key, value);
+                    }
+                    frame.push_operand(Variant::Table(Rc::new(RefCell::new(table))));
+                    self.pc += 1;
+                },
+
+                // Function calls
 
                 Instruction::FunctionCall(ref label, num_args) => {
 
@@ -219,11 +323,28 @@ impl Vm {
                             } else {
                                 frame.pop_operand()
                             };
-                            
+
                             return Ok(Some(return_value));
                         }
                     }
                 },
+
+                // Jump instructions
+
+                Instruction::Jump(address) => {
+                    self.pc = *address;
+                },
+
+                Instruction::JumpIfFalse(address) => {
+                    let value: bool = frame.pop_operand().into();
+                    if !value {
+                        self.pc = *address;
+                    } else {
+                        self.pc += 1;
+                    }
+                },
+
+                // Comparison instructions
 
                 Instruction::Equals => {
                     let a = frame.pop_operand();
@@ -304,31 +425,33 @@ impl Vm {
                 Instruction::Or => {
                     let a = frame.pop_operand();
                     let b = frame.pop_operand();
-                    frame.push_operand(Variant::Boolean(b.as_bool() || a.as_bool()));
+                    let result: bool = b.into() || a.into();
+                    frame.push_operand(Variant::Boolean(result));
                     self.pc += 1;
                 },
 
                 Instruction::And => {
                     let a = frame.pop_operand();
                     let b = frame.pop_operand();
-                    frame.push_operand(Variant::Boolean(b.as_bool() && a.as_bool()));
+                    let result: bool = b.into() && a.into();
+                    frame.push_operand(Variant::Boolean(result));
                     self.pc += 1;
                 },
-                
+
                 Instruction::Mod => {
                     let a = frame.pop_operand();
                     let b = frame.pop_operand();
                     frame.push_operand(b % a);
                     self.pc += 1;
                 },
-                
+
                 Instruction::Pow => {
                     let a = frame.pop_operand();
                     let b = frame.pop_operand();
                     frame.push_operand(b.pow(&a));
                     self.pc += 1;
                 },
-                
+
                 Instruction::Negate => {
                     let a = frame.pop_operand();
                     frame.push_operand(-a);
@@ -339,10 +462,10 @@ impl Vm {
                     break;
                 },
 
-                _ => unimplemented!("Instruction not implemented: {:?}", instruction),
             }
 
-            trace!("Frame <- {:?}", frame);
+            trace!("Frame locals <- {:?}", frame.locals);
+            trace!("Frame operands <- {:?}", frame.operands);
 
         }
 
@@ -370,6 +493,25 @@ mod tests {
                 Instruction::Push(Variant::Integer(2)),
                 Instruction::Add,
                 Instruction::Push(Variant::Integer(3)),
+                Instruction::Equals,
+                Instruction::Halt,
+            ],
+        };
+
+        let vm = Vm::new(program);
+        vm.run(None);
+
+    }
+    
+    #[test]
+    fn test_add_and_compare_false() {
+        let program = Program {
+            labels: HashMap::new(),
+            instructions: vec![
+                Instruction::Push(Variant::Integer(1)),
+                Instruction::Push(Variant::Integer(2)),
+                Instruction::Add,
+                Instruction::Push(Variant::Integer(4)),
                 Instruction::Equals,
                 Instruction::Halt,
             ],
