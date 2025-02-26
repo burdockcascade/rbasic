@@ -127,6 +127,12 @@ impl Tokenizer {
                 None => break,
             }
         }
+        
+        tokens.push(Token {
+            token_type: TokenType::EndOfInput,
+            lexeme: None,
+            position: TokenPosition { line: tokenizer.line, column: tokenizer.column },
+        });
 
         tokens
     }

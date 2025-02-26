@@ -1,4 +1,4 @@
-use crate::common::test_code_snippet;
+use crate::common::test_code_snippet_ok;
 
 mod common;
 
@@ -6,7 +6,7 @@ mod common;
 
 #[test]
 fn test_if_true() {
-    test_code_snippet(r#"
+    test_code_snippet_ok(r#"
         var condition = true
         if condition do
             condition = false
@@ -19,7 +19,7 @@ fn test_if_true() {
 
 #[test]
 fn test_while_true() {
-    test_code_snippet(r#"
+    test_code_snippet_ok(r#"
         var condition = true
         while condition do
             condition = false
@@ -30,7 +30,7 @@ fn test_while_true() {
 
 #[test]
 fn test_while_counter() {
-    test_code_snippet(r#"
+    test_code_snippet_ok(r#"
         var i = 0
         while i < 3 do
             i = i + 1

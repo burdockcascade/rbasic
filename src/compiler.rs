@@ -1,13 +1,12 @@
 use std::collections::HashMap;
-use log::{debug, error, trace};
+use log::{debug, trace};
 use crate::variant::Variant;
 use crate::vm::{Instruction, Program};
 use crate::ScriptError;
 use crate::tokenizer::{Token, TokenType};
 
 struct Variable {
-    name: String,
-    value: Variant,
+    name: String
 }
 
 struct Function {
@@ -25,8 +24,7 @@ impl Function {
             }
         }
         self.locals.push(Variable {
-            name: name.to_string(),
-            value: Variant::Integer(0),
+            name: name.to_string()
         });
         self.locals.len() - 1
     }
@@ -59,6 +57,7 @@ impl Compiler {
 
             match token.token_type {
                 TokenType::Function => self.compile_function(),
+                TokenType::EndOfInput => break,
                 _ => unimplemented!("{:?}", token),
             }
         }
@@ -97,13 +96,13 @@ impl Compiler {
     }
     
     fn consume_optional_token(&mut self, token_type: TokenType){
-        if self.this_token_is(token_type) {
+        if self.current_token_is(token_type) {
             self.token_index += 1;
 
         }
     }
     
-    fn skip_token(&mut self) {
+    fn next_token(&mut self) {
         self.token_index += 1;
     }
     
@@ -139,11 +138,19 @@ impl Compiler {
         }
     }
     
-    fn this_token_is(&self, token_type: TokenType) -> bool {
+    fn current_token_is(&self, token_type: TokenType) -> bool {
         match self.tokens.get(self.token_index) {
             Some(token) => token.token_type == token_type,
             None => false,
         }
+    }
+    
+    fn trace_current_token(&self) {
+        trace!("Current token: {:?}", self.current_token());
+    }
+    
+    fn trace_next_token(&self) {
+        trace!("Next token: {:?}", self.peek_at_next_token());
     }
 }
 
@@ -151,9 +158,11 @@ impl Compiler {
 impl Compiler {
     
     fn compile_assertion(&mut self, function_index: usize) {
+        trace!("Compiling assertion");
         self.consume_token(TokenType::Assert);
         self.compile_expression(function_index);
         self.functions[function_index].instructions.push(Instruction::Assert);
+        trace!("Assertion compiled");
     }
 
     fn compile_block(&mut self, function_index: usize) {
@@ -164,16 +173,17 @@ impl Compiler {
             
             let token = self.current_token();
 
+            trace!("=== Compiling statement ===");
+
             match token.token_type {
                 TokenType::End => {
-                    self.skip_token();
+                    trace!("End of block");
+                    self.next_token();
                     break;
                 }
                 TokenType::Identifier => {
-                    let identifier = token.lexeme.as_ref().unwrap().to_string();
                     if self.next_token_is(TokenType::LeftParen) {
-                        self.token_index += 1;
-                        self.compile_function_call(function_index, identifier, false);
+                        self.compile_function_call(function_index, false);
                     } else if self.next_token_is_one_of(&[TokenType::Equal, TokenType::LeftBracket, TokenType::Dot]) {
                         self.compile_variable_assignment(function_index);
                     } else {
@@ -186,15 +196,18 @@ impl Compiler {
                 TokenType::Assert => self.compile_assertion(function_index),
                 TokenType::While => self.compile_while_statement(function_index),
                 TokenType::Semicolon => self.token_index += 1,
+                TokenType::EndOfInput => break,
                 _ => unimplemented!("{:?}", token),
             }
         }
     }
 
     fn compile_return_statement(&mut self, function_index: usize) {
-        self.consume_token(TokenType::Return);
+        trace!("Compiling return statement");
+        self.next_token();
         self.compile_expression(function_index);
         self.functions[function_index].instructions.push(Instruction::Return);
+        trace!("Return statement compiled");
     }
 
     fn compile_function(&mut self) {
@@ -203,7 +216,7 @@ impl Compiler {
         let identifier = self.fetch_and_consume_token(TokenType::Identifier);
         let function_name = identifier.lexeme.as_ref().unwrap().to_string();
 
-        trace!("Function declaration: {:?}", identifier.lexeme);
+        debug!("Compiling function: {}", function_name);
 
         self.consume_token(TokenType::LeftParen);
 
@@ -216,13 +229,13 @@ impl Compiler {
                 TokenType::Identifier => {
                     let identifier = token.lexeme.as_ref().unwrap().to_string();
                     parameters.push(identifier);
-                    self.token_index += 1;
+                    self.next_token();
                 }
                 TokenType::Comma => {
-                    self.token_index += 1;
+                    self.next_token();
                 }
                 TokenType::RightParen => {
-                    self.token_index += 1;
+                    self.next_token();
                     break;
                 }
                 _ => panic!("Unexpected token {:?}", token),
@@ -265,14 +278,15 @@ impl Compiler {
         let identifier = self.fetch_and_consume_token(TokenType::Identifier);
         let var_name = identifier.lexeme.as_ref().unwrap().to_string();
         let var_index = self.functions[function_index].find_or_insert_local(&var_name);
-
-        trace!("Variable assignment: {}", var_name);
+        
+        trace!("Variable assignment start for {}", var_name);
 
         // if next token is an assignment operator then it's a simple assignment
-        if self.this_token_is(TokenType::Equal) {
+        if self.current_token_is(TokenType::Equal) {
             self.token_index += 1;
             self.compile_expression(function_index);
             self.functions[function_index].instructions.push(Instruction::SetLocal(var_index));
+            trace!("Variable assignment (simple) end for {}", var_name);
             return;
         }
         
@@ -288,7 +302,8 @@ impl Compiler {
                     self.token_index += 1;
                     self.compile_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::SetMember);
-                    break;
+                    trace!("Variable assignment (equal) end for {}", var_name);
+                    return;
                 }
                 TokenType::LeftBracket => {
                     trace!("Array access: {}", var_name);
@@ -300,7 +315,8 @@ impl Compiler {
                         self.token_index += 1;
                         self.compile_expression(function_index);
                         self.functions[function_index].instructions.push(Instruction::SetMember);
-                        return;
+                        trace!("Variable assignment (leftbracket) end for {}", var_name);
+                        break;
                     } else {
                         self.functions[function_index].instructions.push(Instruction::MemberAccess);
                     }
@@ -315,40 +331,47 @@ impl Compiler {
                 _ => panic!("Unexpected token {:?}", self.peek_at_next_token()),
             }
         }
-        
-        trace!("Variable assignment end");
-        
     }
 
-    fn compile_function_call(&mut self, function_index: usize, identifier: String, is_assignment: bool) {
+    fn compile_function_call(&mut self, function_index: usize, is_assignment: bool) {
+        
+        let identifier = self.fetch_and_consume_token(TokenType::Identifier).lexeme.as_ref().unwrap().to_string();
+        
+        trace!("Compiling function call: {}", identifier);
+        
         self.consume_token(TokenType::LeftParen);
 
         let mut arg_count = 0;
 
+        // compile arguments
         loop {
             match self.current_token().token_type {
                 TokenType::RightParen => {
-                    self.token_index += 1;
+                    trace!("Function call arguments compiled");
+                    self.next_token();
                     break;
                 }
                 TokenType::Comma => {
-                    self.token_index += 1;
+                    self.next_token();
                 }
                 _ => {
+                    trace!("Compiling function call argument");
                     self.compile_expression(function_index);
                     arg_count += 1;
+                    trace!("Function call argument compiled");
                 }
             }
         }
 
         // add function call instruction
-        trace!("Function call: '{}' with {} arguments", identifier, arg_count);
         self.functions[function_index].instructions.push(Instruction::FunctionCall(identifier.to_string(), arg_count));
 
         // if not an assignment, pop the result
         if !is_assignment {
-            self.functions[function_index].instructions.push(Instruction::Pop);
+            //self.functions[function_index].instructions.push(Instruction::Pop);
         }
+        
+        trace!("Function call compiled for {} with {} arguments", identifier, arg_count);
     }
     
 }
@@ -413,7 +436,7 @@ impl Compiler {
         loop {
             match self.current_token().token_type {
                 TokenType::Or => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_logical_and_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::Or);
                 }
@@ -428,7 +451,7 @@ impl Compiler {
         loop {
             match self.current_token().token_type {
                 TokenType::And => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_relational_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::And);
                 }
@@ -443,32 +466,32 @@ impl Compiler {
         loop {
             match self.current_token().token_type {
                 TokenType::DoubleEqual => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_additive_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::Equals);
                 }
                 TokenType::NotEqual => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_additive_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::NotEqual);
                 }
                 TokenType::LessThan => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_additive_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::LessThan);
                 }
                 TokenType::LessThanOrEqual => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_additive_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::LessEqual);
                 }
                 TokenType::GreaterThan => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_additive_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::Greater);
                 }
                 TokenType::GreaterThanOrEqual => {
-                    self.token_index += 1;
+                    self.next_token();
                     self.compile_additive_expression(function_index);
                     self.functions[function_index].instructions.push(Instruction::GreaterEqual);
                 }
@@ -499,7 +522,7 @@ impl Compiler {
 
     fn compile_multiplicative_expression(&mut self, function_index: usize) {
         self.compile_unary_expression(function_index);
-
+        
         loop {
             match self.current_token().token_type {
                 TokenType::Star => {
@@ -549,58 +572,90 @@ impl Compiler {
 
         match self.current_token().token_type {
             TokenType::LeftParen => {
-                self.skip_token();
+                self.next_token();
                 self.compile_expression(function_index);
+                self.next_token();
             },
             TokenType::RightParen => {
-                self.skip_token();
+                self.next_token();
             },
             TokenType::Integer => {
                 let value: i64 = self.current_token().lexeme.as_ref().unwrap().parse().unwrap();
                 self.functions[function_index].instructions.push(Instruction::Push(Variant::Integer(value)));
+                self.next_token();
             },
             TokenType::Float => {
                 let value: f64 = self.current_token().lexeme.as_ref().unwrap().parse().unwrap();
                 self.functions[function_index].instructions.push(Instruction::Push(Variant::Float(value)));
+                self.next_token();
             },
             TokenType::True => {
                 self.functions[function_index].instructions.push(Instruction::Push(Variant::Boolean(true)));
+                self.next_token();
             },
             TokenType::False => {
                 self.functions[function_index].instructions.push(Instruction::Push(Variant::Boolean(false)));
+                self.next_token();
             },
             TokenType::String => {
                 let value = self.current_token().lexeme.as_ref().unwrap().to_string();
                 self.functions[function_index].instructions.push(Instruction::Push(Variant::String(value)));
+                self.next_token();
             },
-            TokenType::Identifier => self.compile_identifier(function_index),
+            TokenType::Identifier => self.compile_read_identifier(function_index),
             TokenType::LeftBracket => self.compile_array_declaration(function_index),
             TokenType::LeftBrace => self.compile_table_declaration(function_index),
             _ => unimplemented!("{:?}", self.current_token()),
         }
-
-        self.token_index += 1;
     }
     
-    fn compile_identifier(&mut self, function_index: usize) {
+    fn compile_read_identifier(&mut self, function_index: usize) {
         let identifier = self.current_token();
         let name = identifier.lexeme.as_ref().unwrap().to_string();
-        match self.peek_at_next_token().token_type {
-            TokenType::LeftParen => {
-                self.skip_token();
-                self.compile_function_call(function_index, name, false);
+        
+        trace!("Starting identifier chain: {}", name);
+        
+        match self.next_token_is(TokenType::LeftParen) {
+            true => {
+                self.compile_function_call(function_index, false);
             },
-            TokenType::LeftBracket => {
-                self.skip_token();
-                self.compile_member_access(function_index, name);
-            },
-            TokenType::Dot => {
-                self.skip_token();
-                self.compile_member_access(function_index, name);
-            },
-            _ => {
+            false => {
                 let var_index = self.functions[function_index].find_or_insert_local(name.as_str());
                 self.functions[function_index].instructions.push(Instruction::LoadLocal(var_index));
+            }
+        }
+        
+        self.next_token();
+        
+        // break if no more tokens
+        if self.token_index >= self.tokens.len() {
+            return;
+        }
+        
+        loop {
+            match self.current_token().token_type {
+                TokenType::LeftParen => {
+                    self.compile_function_call(function_index, false);
+                },
+                TokenType::LeftBracket => {
+                    trace!("Compiling array access");
+                    self.next_token();
+                    self.compile_expression(function_index);
+                    self.functions[function_index].instructions.push(Instruction::MemberAccess);
+                    self.consume_token(TokenType::RightBracket);
+                    trace!("Array access compiled");
+                },
+                TokenType::Dot => {
+                    trace!("Compiling member access");
+                    self.next_token();
+                    self.compile_expression(function_index);
+                    self.functions[function_index].instructions.push(Instruction::MemberAccess);
+                    trace!("Member access compiled");
+                },
+                _ => {
+                    trace!("Identifier chain compiled");
+                    break;
+                }
             }
         }
     }
@@ -614,7 +669,10 @@ impl Compiler {
         loop {
             match self.tokens.get(self.token_index) {
                 Some(token) => match token.token_type {
-                    TokenType::RightBracket => break,
+                    TokenType::RightBracket => {
+                        self.next_token();
+                        break
+                    },
                     TokenType::Comma => self.token_index += 1,
                     _ => {
                         self.compile_expression(function_index);
@@ -638,7 +696,10 @@ impl Compiler {
         loop {
             match self.tokens.get(self.token_index) {
                 Some(token) => match token.token_type {
-                    TokenType::RightBrace => break,
+                    TokenType::RightBrace => {
+                        self.next_token();
+                        break
+                    },
                     TokenType::Comma => self.token_index += 1,
                     _ => {
                         self.compile_expression(function_index);
